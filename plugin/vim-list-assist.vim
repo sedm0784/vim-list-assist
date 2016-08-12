@@ -9,6 +9,8 @@
 " FIXME: List items can be inside blockquotes
 " FIXME: Empty list items are allowed in markdown. Test thoroughly what
 "        happens when they exist at various locations in the list.
+" FIXME: Check/test for problems when checking lines before beginning of file
+"        (subtracting past line index 1)
 
 let s:re_blank_line = '^\s*$'
 
@@ -48,17 +50,41 @@ function! s:get_list_marker(line_index)
     " Remove the extra character, and return non-empty
     return [list_marker[:-2], 0]
   endif
+endfunction
 
+" Tests if two markers are in the same list
+function! s:ordered_markers_match(first_marker, second_marker)
+  if a:first_marker !~ '\d' || a:second_marker !~ '\d'
+    " One of the lists is not an ordered list
+     return 0
+  elseif indent(a:second_marker) >= strlen(a:first_marker)
+    " If the second marker is indented past the first one, it's a sublist
+    return 0
+  endif
+
+  return 1
 endfunction
 
 " Tests if a line is within a list item
 "
-" Returns the marker, including the surrounding spacing and a boolean "empty"
-" to indicate whether the list item has any contents
+" Returns a list containing:
+" - the marker, including the surrounding spacing
+" - a boolean "empty" to indicate whether the list item has any contents
+" - a boolean "paragraph" to indicate whether the list item was separated from
+"   a previous list item by an empty line
 function! s:in_list_item(line_index)
   let [list_marker, empty] = s:get_list_marker(a:line_index)
   if strlen(list_marker) != 0
-    return [list_marker, empty]
+    " Test if the line above is blank AND the line above that is in a list of the
+    " same type as this one. If so, we are in a paragraph list.
+    let paragraph = 0
+    if getline(a:line_index - 1) =~ s:re_blank_line
+      let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 2)
+      if previous_marker == list_marker || s:ordered_markers_match(previous_marker, list_marker)
+        let paragraph = 1
+      endif
+    endif
+    return [list_marker, empty, paragraph]
   endif
 
   let this_line = getline(a:line_index)
@@ -69,7 +95,7 @@ function! s:in_list_item(line_index)
   " FIXME: Arguably, pressing enter on a blank line within a paragraph list
   " should create a new (correctly spaced) list item.
   if this_line =~ s:re_blank_line
-    return ["", 0]
+    return ["", 0, 0]
   endif
 
   if previous_line !~ s:re_blank_line
@@ -80,21 +106,21 @@ function! s:in_list_item(line_index)
     let this_indent = indent(a:line_index)
     if this_indent < 2
       " Indent is less than two. We cannot be in a list
-      return ["", 0]
+      return ["", 0, 0]
     else
       " If indent greater than or equal to any previous list marker, then
       " we're in that list
-      let [list_marker, empty] = s:in_list_item(a:line_index - 2)
+      let [list_marker, empty, paragraph] = s:in_list_item(a:line_index - 2)
 
       if this_indent >= strlen(list_marker)
         " N.B. This also returns correct value ("") if line above is NOT in a
         " list item.
-        return [list_marker, empty]
+        return [list_marker, empty, paragraph]
       else
         " Not in the same list item as previous non-blank line
         " FIXME: Check for list items further up, too, to handle lists with
         " sub lists
-        return ["", 0]
+        return ["", 0, 0]
       endif
     endif
   endif
@@ -103,7 +129,7 @@ endfunction
 function! s:auto_list()
   " First, we need to check if we're in a list.
   let line_index = line(".")
-  let [list_marker, empty] = s:in_list_item(line_index)
+  let [list_marker, empty, paragraph] = s:in_list_item(line_index)
 
   if strlen(list_marker) == 0
     " Not in a list
@@ -126,8 +152,12 @@ function! s:auto_list()
     "let list_marker = getline(".")
   elseif empty
     " Empty list item
-    " Add the newline
-    call s:cr()
+
+    " We don't need a newline if we're in a paragraph, because one already
+    " exists.
+    if !paragraph
+      call s:cr()
+    endif
     " And clear the empty list item
     call setline(line_index, "")
   else
@@ -137,6 +167,11 @@ function! s:auto_list()
       " FIXME: account for 999999999 case
       let list_ordinal = list_ordinal + 1
       let list_marker = substitute(list_marker, '\d\+', list_ordinal, "")
+    endif
+
+    if paragraph
+      " Add an extra newline
+      call s:cr()
     endif
 
     call s:cr()
