@@ -37,6 +37,10 @@ function! s:get_list_marker(line_index)
     let list_marker = matchstr(this_line, '\v^ {,3}\d{1,9}(\.|\)) {1,4}\S?')
   endif
 
+  if strlen(list_marker) == 0
+    return ["", 0]
+  endif
+
   if list_marker[-1:] == " "
     " Return empty
     return [list_marker, 1]
