@@ -11,6 +11,17 @@
 "        happens when they exist at various locations in the list.
 " FIXME: Check/test for problems when checking lines before beginning of file
 "        (subtracting past line index 1)
+" FIXME: Maybe run auto-renumbering feature whenever cursor moves and we are
+"        found to be within a list item.
+" FIXME: Mapping shouldn't run if cursor is on or before the list item. We
+"        should still be able to insert empty lines above by using <CR> from
+"        that position.
+" FIXME: Can we renumber lists using v_g_CTRL-A? What about sublists? Is it
+"        possible to skip these with simple visual blocks, or is overlap
+"        possible, necessitating more thorough parsing?
+" FIXME: The plugin breaks insert commands when a count is used! e.g.
+"        5iblah<cr><esc> Can we access the count with `v:count1`? Does it help
+"        if we can? (I'm guessing not.)
 
 let s:re_blank_line = '^\s*$'
 
@@ -72,7 +83,7 @@ endfunction
 "    item is a paragraph list, otherwise non-paragraph list items are used.
 " 3: ALWAYS use paragraph lists.
 function! s:paragraph_option()
-  return get(g:, 'vim_list_assist_paragraphs', 2)
+  return get(g:, 'list_assist_paragraphs', 2)
 endfunction
 
 " Tests if a line is within a list item
