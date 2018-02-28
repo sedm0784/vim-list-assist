@@ -65,6 +65,16 @@ function! s:ordered_markers_match(first_marker, second_marker)
   return 1
 endfunction
 
+" 0: NEVER use paragraph lists
+" 1: MANUAL paragraph lists. The first <CR> adds a non-paragraph list item, the
+"    second converts to a paragraph list item, the third ends the list.
+" 2: AUTOMATIC paragraph lists. Paragraph lists are used if the current list
+"    item is a paragraph list, otherwise non-paragraph list items are used.
+" 3: ALWAYS use paragraph lists.
+function! s:paragraph_option()
+  return get(g:, 'vim_list_assist_paragraphs', 2)
+endfunction
+
 " Tests if a line is within a list item
 "
 " Returns a list containing:
@@ -74,27 +84,54 @@ endfunction
 "   a previous list item by an empty line
 function! s:in_list_item(line_index)
   let [list_marker, empty] = s:get_list_marker(a:line_index)
+
+  let previous_line = getline(a:line_index - 1)
+
   if strlen(list_marker) != 0
-    " Test if the line above is blank AND the line above that is in a list of the
-    " same type as this one. If so, we are in a paragraph list.
-    let paragraph = 0
-    if getline(a:line_index - 1) =~ s:re_blank_line
-      let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 2)
-      if previous_marker == list_marker || s:ordered_markers_match(previous_marker, list_marker)
-        let paragraph = 1
+    if s:paragraph_option() == 1 && empty
+      " Special case for manual paragraph list option.
+      if previous_line =~ s:re_blank_line
+        " Unset paragraph, because we are not in a paragraph. We want to end
+        " the list by simply clearing the current line.
+        return [list_marker, 1, 0]
+      endif
+
+      let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 1)
+      " FIXME: Use == for unordered lists. Check that the list index is one
+      "        higher than previous for ordered lists.
+      if list_marker == previous_marker
+        " Set paragraph, because we want to clear the current line and add a
+        " new list item below.
+        return [list_marker, 1, 1]
+      endif
+    endif
+
+    if s:paragraph_option() == 3
+      let paragraph = 1
+    else
+      let paragraph = 0
+    endif
+
+    if s:paragraph_option() == 2
+      " Test if the line above is blank AND the line above that is in a list
+      " of the same type as this one. If so, we are in a paragraph list.
+      if getline(a:line_index - 1) =~ s:re_blank_line
+        let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 2)
+        if previous_marker == list_marker || s:ordered_markers_match(previous_marker, list_marker)
+          let paragraph = 1
+        endif
       endif
     endif
     return [list_marker, empty, paragraph]
   endif
 
   let this_line = getline(a:line_index)
-  let previous_line = getline(a:line_index - 1)
 
-  " Need to check if this_line is blank. Pressing enter on a blank line
-  " should never result in a new list item.
-  " FIXME: Arguably, pressing enter on a blank line within a paragraph list
-  " should create a new (correctly spaced) list item.
+  " Check if this_line is blank.
   if this_line =~ s:re_blank_line
+    " Pressing enter on a blank line should never result in a new list item.
+    " FIXME: Arguably, pressing enter on a blank line within a paragraph
+    "        list should create a new (correctly spaced) list item.
     return ["", 0, 0]
   endif
 
@@ -150,12 +187,14 @@ function! s:auto_list()
     "call setline(".", getline(".")[:-2])
     " Also hack around putting cursor in correct place
     "let list_marker = getline(".")
-  elseif empty
+  elseif empty && (s:paragraph_option() != 1 || !paragraph)
     " Empty list item
 
-    " We don't need a newline if we're in a paragraph, because one already
-    " exists.
-    if !paragraph
+    " We don't need a newline if we're ending a manual-paragraph list, because
+    " one already exists
+    " We don't need a newline if we're in an automatic paragraph, because one
+    " already exists.
+    if s:paragraph_option() != 1 && !paragraph
       call s:cr()
     endif
     " And clear the empty list item
@@ -169,7 +208,7 @@ function! s:auto_list()
       let list_marker = substitute(list_marker, '\d\+', list_ordinal, "")
     endif
 
-    if paragraph
+    if paragraph && s:paragraph_option() != 1
       " Add an extra newline
       call s:cr()
     endif
@@ -177,6 +216,11 @@ function! s:auto_list()
     call s:cr()
     let current_line = getline(".")
     call setline(".", list_marker . current_line)
+
+    if empty && s:paragraph_option() == 1
+      " And clear the empty list item
+      call setline(line_index, "")
+    endif
   endif
 
   " Return to insert mode
