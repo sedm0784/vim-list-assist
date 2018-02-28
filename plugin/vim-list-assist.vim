@@ -109,20 +109,28 @@ function! s:in_list_item(line_index)
 
   if strlen(list_marker) != 0
     if s:paragraph_option() == s:paragraph_option_manual && empty
-      " Special case for manual paragraph list option.
+      " Special cases for manual paragraph list option: an empty list item can
+      " either mean we want to end the list, or it can mean we just pressed
+      " return and want to convert the new item we just added into a
+      " paragraph list item.
+
       if previous_line =~ s:re_blank_line
         " Unset paragraph, because we are not in a paragraph. We want to end
         " the list by simply clearing the current line.
         return [list_marker, 1, 0]
       endif
 
+      " Check if the current marker matches the marker from the previous line.
+      " For unordered lists, this just means if the markers are the same. For
+      " ordered lists, it means if this marker is one higher than the
+      " previous. We can test both using the same comparision, because
+      " increment_marker doesn't do anything for unordered lists.
       let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 1)
-      " FIXME: Use == for unordered lists. Check that the list index is one
-      "        higher than previous for ordered lists.
-      if list_marker == previous_marker
+
+      if list_marker == s:increment_marker(previous_marker)
         " Set paragraph, because we want to clear the current line and add a
         " new list item below.
-        return [list_marker, 1, 1]
+        return [previous_marker, 1, 1]
       endif
     endif
 
@@ -183,6 +191,17 @@ function! s:in_list_item(line_index)
   endif
 endfunction
 
+function! s:increment_marker(list_marker)
+  let list_ordinal = matchstr(a:list_marker, '\d\+')
+  if strlen(list_ordinal) == 0
+    return a:list_marker
+  endif
+
+  " FIXME: account for 999999999 case
+  let list_ordinal = list_ordinal + 1
+  return substitute(a:list_marker, '\d\+', list_ordinal, "")
+endfunction
+
 function! s:auto_list()
   " First, we need to check if we're in a list.
   let line_index = line(".")
@@ -221,12 +240,7 @@ function! s:auto_list()
     call setline(line_index, "")
   else
     " Non-empty list item
-    let list_ordinal = matchstr(list_marker, '\d\+')
-    if strlen(list_ordinal) > 0
-      " FIXME: account for 999999999 case
-      let list_ordinal = list_ordinal + 1
-      let list_marker = substitute(list_marker, '\d\+', list_ordinal, "")
-    endif
+    let list_marker = s:increment_marker(list_marker)
 
     if paragraph && s:paragraph_option() != s:paragraph_option_manual
       " Add an extra newline
