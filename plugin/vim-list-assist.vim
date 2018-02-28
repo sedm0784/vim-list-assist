@@ -213,7 +213,9 @@ function! s:auto_list()
     call s:cr()
     " FIXME: ensure that autoindent white-space fiddling is PRESERVED when
     " pressing CR outside of a list. i.e. behaviour should be different
-    " depending on whether autoindent is set.
+    " depending on whether autoindent is set. Perhaps the solution to this is
+    " to convert the mapping to be an expression map that uses a real <CR> if
+    " we're not in a list.
 
     " N.B. There is a problem here in that autoindent functionality is lost if
     " the execute statement completes without "typing" anything. Hack around
