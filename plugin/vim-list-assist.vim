@@ -301,3 +301,5 @@ endfunction
 " N.B. Currently only enabled for return key in insert mode, not for normal
 " mode 'o' or 'O'
 autocmd FileType markdown inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
+autocmd FileType text inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
+autocmd FileType mail inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
