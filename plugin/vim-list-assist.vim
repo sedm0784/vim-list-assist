@@ -22,6 +22,7 @@
 " FIXME: The plugin breaks insert commands when a count is used! e.g.
 "        5iblah<cr><esc> Can we access the count with `v:count1`? Does it help
 "        if we can? (I'm guessing not.)
+" FIXME: Allow user to specify filetypes where mappings should be created
 
 let s:re_blank_line = '^\s*$'
 
