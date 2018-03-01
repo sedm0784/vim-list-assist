@@ -28,11 +28,34 @@ let s:re_blank_line = '^\s*$'
 " A "strict" implementation of <CR> which does not allow anything (notably,
 " 'autoindent') to mess with indentation.
 function! s:cr()
-  let column = col(".")
+  " This function needs to behave differently if it is the second time we have
+  " been called in order to correctly handle the case where we are entering
+  " two newlines for a paragraph list where the cursor was positioned in the
+  " middle of the item.
+  "
+  " When this occurs, the cursor is left ON the first character of the content
+  " of the list item (because that has been inserted at the beginning of the
+  " line, i.e. at column #1). Therefore we need to adjust our operations
+  " accordingly.
+  "
+  " See test case:
+  "   2 Splits existing list items
+  "
+  " in file:
+  "   unordered_lists_paragraph-always.vader
+  if s:first_cr
+    let insert_command = 'a'
+    let column = col(".")
+  else
+    let insert_command = 'i'
+    let column = 0
+  endif
+
   let line = getline(".")
 
-  execute "normal! a\<CR>"
+  execute "normal! " . insert_command . "\<CR>"
   call setline(".", line[column:])
+  let s:first_cr = 0
 endfunction
 
 " Analyses a single line to see if it begins with a list marker.
@@ -203,6 +226,9 @@ function! s:increment_marker(list_marker)
 endfunction
 
 function! s:auto_list()
+  " See the function s:cr() for why this variable is required
+  let s:first_cr = 1
+
   " First, we need to check if we're in a list.
   let line_index = line(".")
   let [list_marker, empty, paragraph] = s:in_list_item(line_index)
