@@ -226,6 +226,84 @@ function! s:increment_marker(list_marker)
   return substitute(a:list_marker, '\d\+', list_ordinal, "")
 endfunction
 
+function! s:perform_plain_cr()
+  " Not in a list
+  " Add the newline.
+  call s:cr()
+  " FIXME: ensure that autoindent white-space fiddling is PRESERVED when
+  " pressing CR outside of a list. i.e. behaviour should be different
+  " depending on whether autoindent is set. Perhaps the solution to this is
+  " to convert the mapping to be an expression map that uses a real <CR> if
+  " we're not in a list.
+
+  " N.B. There is a problem here in that autoindent functionality is lost if
+  " the execute statement completes without "typing" anything. Hack around
+  " this by "typing" a dot and then immediately removing it again.
+  " FIXME: This hack is inadequate. We need to remove indent again if <esc>
+  " or <cr> are pressed.
+  " FIXME: It also completely breaks if we press <CR> in the middle of a
+  " line!
+  "execute "normal! a\<CR>."
+  "call setline(".", getline(".")[:-2])
+  " Also hack around putting cursor in correct place
+  "let list_marker = getline(".")
+  call s:return_to_insert("")
+endfunction
+
+function! s:return_to_insert(list_marker)
+  " Return to insert mode
+  let current_line = getline(".")
+  if current_line == a:list_marker
+    " Append
+
+    startinsert!
+  else
+    " Place cursor in correct position and insert
+    call cursor(0, strlen(a:list_marker) + 1)
+    startinsert
+  endif
+endfunction
+
+function! s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
+  if a:empty && (s:paragraph_option() != s:paragraph_option_manual || !a:paragraph)
+    " Empty list item
+
+    " We don't need a newline if we're ending a manual-paragraph list, because
+    " one already exists
+    " We don't need a newline if we're in an automatic paragraph, because one
+    " already exists.
+    if s:paragraph_option() != s:paragraph_option_manual && !a:paragraph
+      call s:cr()
+    endif
+    " And clear the empty list item
+    call setline(a:line_index, "")
+
+    call s:return_to_insert(a:list_marker)
+  else
+    " Non-empty list item
+    let l:list_marker = s:increment_marker(a:list_marker)
+
+    if a:paragraph && s:paragraph_option() != s:paragraph_option_manual
+      " Add an extra newline
+      call s:cr()
+    endif
+
+    call s:cr()
+    let current_line = getline(".")
+    call setline(".", l:list_marker . current_line)
+
+    if a:empty && s:paragraph_option() == s:paragraph_option_manual
+      " And clear the empty list item
+      call setline(a:line_index, "")
+    endif
+
+    call s:return_to_insert(l:list_marker)
+  endif
+endfunction
+
+" This function is invoked by the expression mapping. It returns either "<CR>"
+" to perform a normal <CR>, or a string that will perform the add-list-item or
+" end-list operation.
 function! s:auto_list()
   " See the function s:cr() for why this variable is required
   let s:first_cr = 1
@@ -235,66 +313,9 @@ function! s:auto_list()
   let [list_marker, empty, paragraph] = s:in_list_item(line_index)
 
   if strlen(list_marker) == 0
-    " Not in a list
-    " Add the newline.
-    call s:cr()
-    " FIXME: ensure that autoindent white-space fiddling is PRESERVED when
-    " pressing CR outside of a list. i.e. behaviour should be different
-    " depending on whether autoindent is set. Perhaps the solution to this is
-    " to convert the mapping to be an expression map that uses a real <CR> if
-    " we're not in a list.
-
-    " N.B. There is a problem here in that autoindent functionality is lost if
-    " the execute statement completes without "typing" anything. Hack around
-    " this by "typing" a dot and then immediately removing it again.
-    " FIXME: This hack is inadequate. We need to remove indent again if <esc>
-    " or <cr> are pressed.
-    " FIXME: It also completely breaks if we press <CR> in the middle of a
-    " line!
-    "execute "normal! a\<CR>."
-    "call setline(".", getline(".")[:-2])
-    " Also hack around putting cursor in correct place
-    "let list_marker = getline(".")
-  elseif empty && (s:paragraph_option() != s:paragraph_option_manual || !paragraph)
-    " Empty list item
-
-    " We don't need a newline if we're ending a manual-paragraph list, because
-    " one already exists
-    " We don't need a newline if we're in an automatic paragraph, because one
-    " already exists.
-    if s:paragraph_option() != s:paragraph_option_manual && !paragraph
-      call s:cr()
-    endif
-    " And clear the empty list item
-    call setline(line_index, "")
+    call s:perform_plain_cr()
   else
-    " Non-empty list item
-    let list_marker = s:increment_marker(list_marker)
-
-    if paragraph && s:paragraph_option() != s:paragraph_option_manual
-      " Add an extra newline
-      call s:cr()
-    endif
-
-    call s:cr()
-    let current_line = getline(".")
-    call setline(".", list_marker . current_line)
-
-    if empty && s:paragraph_option() == s:paragraph_option_manual
-      " And clear the empty list item
-      call setline(line_index, "")
-    endif
-  endif
-
-  " Return to insert mode
-  let current_line = getline(".")
-  if current_line == list_marker
-    " Append
-    startinsert!
-  else
-    " Place cursor in correct position and insert
-    call cursor(0, strlen(list_marker) + 1)
-    startinsert
+    call s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
   endif
 endfunction
 
