@@ -28,35 +28,33 @@ let s:re_blank_line = '^\s*$'
 
 " A "strict" implementation of <CR> which does not allow anything (notably,
 " 'autoindent') to mess with indentation.
-function! s:cr()
-  " This function needs to behave differently if it is the second time we have
-  " been called in order to correctly handle the case where we are entering
-  " two newlines for a paragraph list where the cursor was positioned in the
-  " middle of the item.
+function! s:cr(column)
+  " At this point in time, we have already left insert mode, so col('.') can
+  " return `1` in either of two cases:
+  " - We were about to insert text at column 1
+  " - We were about to insert text at column 2
   "
-  " When this occurs, the cursor is left ON the first character of the content
-  " of the list item (because that has been inserted at the beginning of the
-  " line, i.e. at column #1). Therefore we need to adjust our operations
-  " accordingly.
+  " Therefore, we checked the column back while we were in insert mode, at
+  " which time the two scenarios above return different values, and have
+  " passed that value into this function as a:column.
   "
-  " See test case:
-  "   2 Splits existing list items
-  "
-  " in file:
-  "   unordered_lists_paragraph-always.vader
-  if s:first_cr
+  " We are going to use column to split the string: we need to decrement in
+  " order to split the string in the correct place.
+  let column = a:column - 1
+
+  if column > 0
     let insert_command = 'a'
-    let column = col(".")
   else
     let insert_command = 'i'
-    let column = 0
   endif
 
+  " Weirdly, if I move this line below the `execute` line, it fixes all the
+  " pending cases (marked with FIXME) in paragraph_list.vader.
   let line = getline(".")
 
   execute "normal! " . insert_command . "\<CR>"
+
   call setline(".", line[column:])
-  let s:first_cr = 0
 endfunction
 
 " Analyses a single line to see if it begins with a list marker.
@@ -241,7 +239,7 @@ function! s:return_to_insert(list_marker)
   endif
 endfunction
 
-function! s:end_list(line_index, list_marker, paragraph)
+function! s:end_list(line_index, column, list_marker, paragraph)
   " Empty list item that we want to end
 
   " We don't need a newline if we're ending a manual-paragraph list, because
@@ -249,7 +247,7 @@ function! s:end_list(line_index, list_marker, paragraph)
   " We don't need a newline if we're in an automatic paragraph, because one
   " already exists.
   if s:paragraph_option() != s:paragraph_option_manual && !a:paragraph
-    call s:cr()
+    call s:cr(a:column)
   endif
   " And clear the empty list item
   call setline(a:line_index, "")
@@ -258,18 +256,22 @@ function! s:end_list(line_index, list_marker, paragraph)
 endfunction
 
 
-function! s:add_list_item(line_index, list_marker, empty, paragraph)
+function! s:add_list_item(line_index, column, list_marker, empty, paragraph)
   " Non-empty list item or empty item that we need to move down a line
   " (after the second press of Return with "paragraphs" option set to
   " "manual").
   let l:list_marker = s:increment_marker(a:list_marker)
 
+  call s:cr(a:column)
+
   if a:paragraph && s:paragraph_option() != s:paragraph_option_manual
     " Add an extra newline
-    call s:cr()
+    " We just added a new line, so we don't want to pass in our previous cursor
+    " position, but instead the current one, which must be at the start of the
+    " line.
+    call s:cr(1)
   endif
 
-  call s:cr()
   let current_line = getline(".")
   call setline(".", l:list_marker . current_line)
 
@@ -284,11 +286,11 @@ function! s:add_list_item(line_index, list_marker, empty, paragraph)
 endfunction
 
 
-function! s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
+function! s:perform_cr_in_list_item(line_index, column, list_marker, empty, paragraph)
   if a:empty && (s:paragraph_option() != s:paragraph_option_manual || !a:paragraph)
-    call s:end_list(a:line_index, a:list_marker, a:paragraph)
+    call s:end_list(a:line_index, a:column, a:list_marker, a:paragraph)
   else
-    call s:add_list_item(a:line_index, a:list_marker, a:empty, a:paragraph)
+    call s:add_list_item(a:line_index, a:column, a:list_marker, a:empty, a:paragraph)
   endif
 endfunction
 
@@ -296,9 +298,6 @@ endfunction
 " to perform a normal <CR>, or a string that will perform the add-list-item or
 " end-list operation.
 function! s:auto_list()
-  " See the function s:cr() for why this variable is required
-  let s:first_cr = 1
-
   " First, we need to check if we're in a list.
   let line_index = line(".")
   let [list_marker, empty, paragraph] = s:in_list_item(line_index)
@@ -306,9 +305,15 @@ function! s:auto_list()
   if strlen(list_marker) == 0
     return "\<CR>"
   else
+    " Make a note of the column while we're still in insert mode, because as
+    " soon as we leave insert mode, this function can no longer tell us where
+    " text need to be inserted (because when you leave insert mode the cursor
+    " moves left unless it is already at the start of the line).
+    let column = col('.')
     return "\<Esc>:call " . s:SID() . "perform_cr_in_list_item("
-      \ . line_index
-      \ . ", '" . list_marker . "', "
+      \ . line_index . ", "
+      \ . column . ", "
+      \ . "'" . list_marker . "'" . ", "
       \ . empty . ", "
       \ . paragraph . ")\<CR>"
   endif
