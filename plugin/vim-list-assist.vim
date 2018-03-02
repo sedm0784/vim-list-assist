@@ -226,29 +226,6 @@ function! s:increment_marker(list_marker)
   return substitute(a:list_marker, '\d\+', list_ordinal, "")
 endfunction
 
-function! s:perform_plain_cr()
-  " Not in a list
-  " Add the newline.
-  call s:cr()
-  " FIXME: ensure that autoindent white-space fiddling is PRESERVED when
-  " pressing CR outside of a list. i.e. behaviour should be different
-  " depending on whether autoindent is set. Perhaps the solution to this is
-  " to convert the mapping to be an expression map that uses a real <CR> if
-  " we're not in a list.
-
-  " N.B. There is a problem here in that autoindent functionality is lost if
-  " the execute statement completes without "typing" anything. Hack around
-  " this by "typing" a dot and then immediately removing it again.
-  " FIXME: This hack is inadequate. We need to remove indent again if <esc>
-  " or <cr> are pressed.
-  " FIXME: It also completely breaks if we press <CR> in the middle of a
-  " line!
-  "execute "normal! a\<CR>."
-  "call setline(".", getline(".")[:-2])
-  " Also hack around putting cursor in correct place
-  "let list_marker = getline(".")
-  call s:return_to_insert("")
-endfunction
 
 function! s:return_to_insert(list_marker)
   " Return to insert mode
@@ -313,14 +290,25 @@ function! s:auto_list()
   let [list_marker, empty, paragraph] = s:in_list_item(line_index)
 
   if strlen(list_marker) == 0
-    call s:perform_plain_cr()
+    return "\<CR>"
   else
-    call s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
+    return "\<Esc>:call " . s:SID() . "perform_cr_in_list_item("
+      \ . line_index
+      \ . ", '" . list_marker . "', "
+      \ . empty . ", "
+      \ . paragraph . ")\<CR>"
   endif
 endfunction
 
+" We can't use <SID> in the value returned from our expression map because the
+" code is actually executed outside of the context of the script. We need to
+" emulate its behaviour in code, as described towards the bottom of :h <SID>.
+function! s:SID()
+  return "<SNR>" . matchstr(expand('<sfile>'), '<SNR>\zs\d\+\ze_SID$') . "_"
+endfun
+
 " N.B. Currently only enabled for return key in insert mode, not for normal
 " mode 'o' or 'O'
-autocmd FileType markdown inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
-autocmd FileType text inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
-autocmd FileType mail inoremap <buffer> <CR> <Esc>:call <SID>auto_list()<CR>
+autocmd FileType markdown inoremap <expr> <buffer> <CR> <SID>auto_list()
+autocmd FileType text inoremap <expr> <buffer> <CR> <SID>auto_list()
+autocmd FileType mail inoremap <expr> <buffer> <CR> <SID>auto_list()
