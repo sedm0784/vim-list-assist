@@ -243,7 +243,7 @@ endfunction
 
 function! s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
   if a:empty && (s:paragraph_option() != s:paragraph_option_manual || !a:paragraph)
-    " Empty list item
+    " Empty list item that we want to end
 
     " We don't need a newline if we're ending a manual-paragraph list, because
     " one already exists
@@ -257,7 +257,9 @@ function! s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
 
     call s:return_to_insert(a:list_marker)
   else
-    " Non-empty list item
+    " Non-empty list item or empty item that we need to move down a line
+    " (after the second press of Return with "paragraphs" option set to
+    " "manual").
     let l:list_marker = s:increment_marker(a:list_marker)
 
     if a:paragraph && s:paragraph_option() != s:paragraph_option_manual
@@ -269,8 +271,10 @@ function! s:perform_cr_in_list_item(line_index, list_marker, empty, paragraph)
     let current_line = getline(".")
     call setline(".", l:list_marker . current_line)
 
-    if a:empty && s:paragraph_option() == s:paragraph_option_manual
-      " And clear the empty list item
+    if a:empty
+      " The "paragraphs" option is set to manual, the existing list item is
+      " empty, and we just created a new list item on the line below. We need
+      " to delete the existing empty list item.
       call setline(a:line_index, "")
     endif
 
