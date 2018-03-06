@@ -28,7 +28,7 @@ let s:re_blank_line = '^\s*$'
 
 " A "strict" implementation of <CR> which does not allow anything (notably,
 " 'autoindent') to mess with indentation.
-function! s:cr(column)
+function! s:cr(column) abort
   " At this point in time, we have already left insert mode, so col('.') can
   " return `1` in either of two cases:
   " - We were about to insert text at column 1
@@ -61,7 +61,7 @@ endfunction
 "
 " Returns the marker, including the surrounding spacing and a boolean "empty"
 " to indicate whether the list item has any contents
-function! s:get_list_marker(line_index)
+function! s:get_list_marker(line_index) abort
   let this_line = getline(a:line_index)
 
   " Match spacing_bullet_spacing_non-whitespace-character
@@ -86,7 +86,7 @@ function! s:get_list_marker(line_index)
 endfunction
 
 " Tests if two markers are in the same list
-function! s:ordered_markers_match(first_marker, second_marker)
+function! s:ordered_markers_match(first_marker, second_marker) abort
   if a:first_marker !~ '\d' || a:second_marker !~ '\d'
     " One of the lists is not an ordered list
      return 0
@@ -111,7 +111,7 @@ let s:paragraph_option_manual = 'manual'
 let s:paragraph_option_auto = 'auto'
 let s:paragraph_option_always = 'always'
 
-function! s:paragraph_option()
+function! s:paragraph_option() abort
   " FIXME: Maybe do a fuzzy match for typoes? Or just check for a valid value
   "        on VimEnter.
   return tolower(get(g:, 'list_assist_paragraphs', 'auto'))
@@ -124,7 +124,7 @@ endfunction
 " - a boolean "empty" to indicate whether the list item has any contents
 " - a boolean "paragraph" to indicate whether the list item was separated from
 "   a previous list item by an empty line
-function! s:in_list_item(line_index)
+function! s:in_list_item(line_index) abort
   let [list_marker, empty] = s:get_list_marker(a:line_index)
 
   let previous_line = getline(a:line_index - 1)
@@ -213,7 +213,7 @@ function! s:in_list_item(line_index)
   endif
 endfunction
 
-function! s:increment_marker(list_marker)
+function! s:increment_marker(list_marker) abort
   let list_ordinal = matchstr(a:list_marker, '\d\+')
   if strlen(list_ordinal) == 0
     return a:list_marker
@@ -225,7 +225,7 @@ function! s:increment_marker(list_marker)
 endfunction
 
 
-function! s:return_to_insert(list_marker)
+function! s:return_to_insert(list_marker) abort
   " Return to insert mode
   let current_line = getline(".")
   if current_line == a:list_marker
@@ -239,7 +239,7 @@ function! s:return_to_insert(list_marker)
   endif
 endfunction
 
-function! s:end_list(line_index, column, list_marker, paragraph)
+function! s:end_list(line_index, column, list_marker, paragraph) abort
   " Empty list item that we want to end
 
   " We don't need a newline if we're ending a manual-paragraph list, because
@@ -256,7 +256,7 @@ function! s:end_list(line_index, column, list_marker, paragraph)
 endfunction
 
 
-function! s:add_list_item(line_index, column, list_marker, empty, paragraph)
+function! s:add_list_item(line_index, column, list_marker, empty, paragraph) abort
   " Non-empty list item or empty item that we need to move down a line
   " (after the second press of Return with "paragraphs" option set to
   " "manual").
@@ -286,7 +286,7 @@ function! s:add_list_item(line_index, column, list_marker, empty, paragraph)
 endfunction
 
 
-function! s:perform_cr_in_list_item(line_index, column, list_marker, empty, paragraph)
+function! s:perform_cr_in_list_item(line_index, column, list_marker, empty, paragraph) abort
   if a:empty && (s:paragraph_option() != s:paragraph_option_manual || !a:paragraph)
     call s:end_list(a:line_index, a:column, a:list_marker, a:paragraph)
   else
@@ -297,7 +297,7 @@ endfunction
 " This function is invoked by the expression mapping. It returns either "<CR>"
 " to perform a normal <CR>, or a string that will perform the add-list-item or
 " end-list operation.
-function! s:auto_list()
+function! s:auto_list() abort
   " First, we need to check if we're in a list.
   let line_index = line(".")
   let [list_marker, empty, paragraph] = s:in_list_item(line_index)
@@ -322,7 +322,7 @@ endfunction
 " We can't use <SID> in the value returned from our expression map because the
 " code is actually executed outside of the context of the script. We need to
 " emulate its behaviour in code, as described towards the bottom of :h <SID>.
-function! s:SID()
+function! s:SID() abort
   return "<SNR>" . matchstr(expand('<sfile>'), '<SNR>\zs\d\+\ze_SID$') . "_"
 endfun
 
