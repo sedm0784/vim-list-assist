@@ -119,11 +119,19 @@ endfunction
 
 " Tests if a line is within a list item
 "
-" Returns a list containing:
+" Returns either a list containing:
 " - the marker, including the surrounding spacing
 " - a boolean "empty" to indicate whether the list item has any contents
 " - a boolean "paragraph" to indicate whether the list item was separated from
 "   a previous list item by an empty line
+"
+" Or, an offset for how much to move the cursor (to the left) before
+" performing a regular <CR>
+"
+" Note that, if the cursor is *on or before* the list item, it is not
+" considered to be inside the list item, and therefore the marker returned is
+" the empty string. (This allows us to insert blank lines above a list item by
+" pressing Return at the very start of the line.)
 function! s:in_list_item(line_index) abort
   let [list_marker, empty] = s:get_list_marker(a:line_index)
 
@@ -147,12 +155,15 @@ function! s:in_list_item(line_index) abort
       " ordered lists, it means if this marker is one higher than the
       " previous. We can test both using the same comparision, because
       " increment_marker doesn't do anything for unordered lists.
-      let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 1)
+      let prev_in_list_item = s:in_list_item(a:line_index - 1)
+      if type(prev_in_list_item) == type([])
+        let [previous_marker, previous_empty, previous_paragraph] = prev_in_list_item
 
-      if list_marker == s:increment_marker(previous_marker)
-        " Set paragraph, because we want to clear the current line and add a
-        " new list item below.
-        return [previous_marker, 1, 1]
+        if list_marker == s:increment_marker(previous_marker)
+          " Set paragraph, because we want to clear the current line and add a
+          " new list item below.
+          return [previous_marker, 1, 1]
+        endif
       endif
     endif
 
@@ -166,9 +177,12 @@ function! s:in_list_item(line_index) abort
       " Test if the line above is blank AND the line above that is in a list
       " of the same type as this one. If so, we are in a paragraph list.
       if getline(a:line_index - 1) =~ s:re_blank_line
-        let [previous_marker, previous_empty, previous_paragraph] = s:in_list_item(a:line_index - 2)
-        if previous_marker == list_marker || s:ordered_markers_match(previous_marker, list_marker)
-          let paragraph = 1
+        let prev_in_list_item = s:in_list_item(a:line_index - 2)
+        if type(prev_in_list_item) == type([])
+          let [previous_marker, previous_empty, previous_paragraph] = prev_in_list_item
+          if previous_marker == list_marker || s:ordered_markers_match(previous_marker, list_marker)
+            let paragraph = 1
+          endif
         endif
       endif
     endif
@@ -182,7 +196,7 @@ function! s:in_list_item(line_index) abort
     " Pressing enter on a blank line should never result in a new list item.
     " FIXME: Arguably, pressing enter on a blank line within a paragraph
     "        list should create a new (correctly spaced) list item.
-    return ["", 0, 0]
+    return 0
   endif
 
   if previous_line !~ s:re_blank_line
@@ -193,21 +207,26 @@ function! s:in_list_item(line_index) abort
     let this_indent = indent(a:line_index)
     if this_indent < 2
       " Indent is less than two. We cannot be in a list
-      return ["", 0, 0]
+      return 0
     else
       " If indent greater than or equal to any previous list marker, then
       " we're in that list
-      let [list_marker, empty, paragraph] = s:in_list_item(a:line_index - 2)
-
-      if this_indent >= strlen(list_marker)
-        " N.B. This also returns correct value ("") if line above is NOT in a
-        " list item.
-        return [list_marker, empty, paragraph]
+      let prev_in_list_item = s:in_list_item(a:line_index - 2)
+      if type(prev_in_list_item) == type([])
+        let [list_marker, empty, paragraph] = prev_in_list_item
+        if this_indent >= strlen(list_marker)
+          " N.B. This also returns correct value ("") if line above is NOT in a
+          " list item.
+          return [list_marker, empty, paragraph]
+        else
+          " Not in the same list item as previous non-blank line
+          " FIXME: Check for list items further up, too, to handle lists with
+          " sub lists
+          return 0
+        endif
       else
-        " Not in the same list item as previous non-blank line
-        " FIXME: Check for list items further up, too, to handle lists with
-        " sub lists
-        return ["", 0, 0]
+        " FIXME: Can we easily combine this with return 0 line above?
+        return 0
       endif
     endif
   endif
@@ -300,11 +319,12 @@ endfunction
 function! s:auto_list() abort
   " First, we need to check if we're in a list.
   let line_index = line(".")
-  let [list_marker, empty, paragraph] = s:in_list_item(line_index)
+  let in_list_item = s:in_list_item(line_index)
 
-  if strlen(list_marker) == 0
+  if type(in_list_item) != type([])
     return "\<CR>"
   else
+    let [list_marker, empty, paragraph] = in_list_item
     " Make a note of the column while we're still in insert mode, because as
     " soon as we leave insert mode, this function can no longer tell us where
     " text need to be inserted (because when you leave insert mode the cursor
