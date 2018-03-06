@@ -138,6 +138,12 @@ function! s:in_list_item(line_index) abort
   let previous_line = getline(a:line_index - 1)
 
   if strlen(list_marker) != 0
+    " Get the position of the end of the marker and the position of the cursor
+    let marker_end = matchstrpos(list_marker, '^\s*\S*')[2]
+    let column = col('.')
+    if a:line_index == line('.') && column <= marker_end
+      return 0
+    endif
     if s:paragraph_option() == s:paragraph_option_manual && empty
       " Special cases for manual paragraph list option: an empty list item can
       " either mean we want to end the list, or it can mean we just pressed
