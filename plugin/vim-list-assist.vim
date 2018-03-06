@@ -138,11 +138,22 @@ function! s:in_list_item(line_index) abort
   let previous_line = getline(a:line_index - 1)
 
   if strlen(list_marker) != 0
-    " Get the position of the end of the marker and the position of the cursor
-    let marker_end = matchstrpos(list_marker, '^\s*\S*')[2]
+    " Get the positions of the start/end of the marker and the position of the
+    " cursor
+    let [_, marker_start, marker_end] = matchstrpos(list_marker, '^\s*\S*')
+    " N.B. matchstrpos('testing', 'ing') returns ['ing', 4, 7], hence, we need
+    " to add 1 to the returned value to get the result we desire
+    let marker_start = marker_start + 1
     let column = col('.')
     if a:line_index == line('.') && column <= marker_end
-      return 0
+      if column > marker_start
+        " If we're in the middle of the list item, we need to move to the left
+        " of it and then perform a regular <CR>.
+        return column - marker_start
+      else
+        " If we're before the list item, we need to perform a regular <CR>.
+        return 0
+      endif
     endif
     if s:paragraph_option() == s:paragraph_option_manual && empty
       " Special cases for manual paragraph list option: an empty list item can
@@ -328,7 +339,11 @@ function! s:auto_list() abort
   let in_list_item = s:in_list_item(line_index)
 
   if type(in_list_item) != type([])
-    return "\<CR>"
+    let offset_command = ''
+    if in_list_item > 0
+      let offset_command = "\<C-O>" . in_list_item . 'h'
+    endif
+    return offset_command . "\<CR>"
   else
     let [list_marker, empty, paragraph] = in_list_item
     " Make a note of the column while we're still in insert mode, because as
